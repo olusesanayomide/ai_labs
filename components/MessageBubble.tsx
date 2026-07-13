@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 // ----------------------------------------------------------------------
@@ -32,6 +32,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   timestamp,
 }) => {
   const isUser = role === "user";
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
     <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"} mb-6 px-4`}>
@@ -92,7 +97,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               isUser ? "text-indigo-200 justify-end" : "text-slate-400 justify-start"
             }`}
           >
-            {new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric' }).format(timestamp)}
+            {mounted ? new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric' }).format(timestamp) : '\u00A0'}
           </div>
         )}
       </div>
