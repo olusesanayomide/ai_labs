@@ -1,92 +1,106 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { useChat } from "@ai-sdk/react";
 import { Sidebar } from "@/components/Sidebar";
 import ChatLayout from "@/components/ChatLayout";
 import ChatInput from "@/components/ChatInput";
 import MessageBubble from "@/components/MessageBubble";
 import TypingIndicator from "@/components/TypingIndicator";
+import type { UIMessage } from "ai";
+
+// ----------------------------------------------------------------------
+// HELPERS
+// ----------------------------------------------------------------------
+
+/**
+ * Extract the concatenated text content from a UIMessage's parts array.
+ * AI SDK v7 stores content in `parts: [{ type: 'text', text: '...' }]`,
+ * not a flat `content` string.
+ */
+function getMessageText(msg: UIMessage): string {
+  return msg.parts
+    .filter((p): p is { type: "text"; text: string } => p.type === "text")
+    .map((p) => p.text)
+    .join("");
+}
 
 // ----------------------------------------------------------------------
 // DATA TYPES
 // ----------------------------------------------------------------------
 
-type Role = "user" | "assistant";
-
-interface Message {
-  id: string;
-  role: Role;
-  content: string;
-  timestamp: Date;
-}
-
 interface ChatSession {
   id: string;
   title: string;
-  messages: Message[];
+  messages: UIMessage[];
 }
-
-// ----------------------------------------------------------------------
-// MOCK DATA
-// ----------------------------------------------------------------------
-
-const MOCK_CHATS: ChatSession[] = [
-  {
-    id: "1",
-    title: "Welcome to AI Lab",
-    messages: [
-      {
-        id: "m1",
-        role: "assistant",
-        content: "Hello! I'm your AI assistant. How can I help you today?",
-        timestamp: new Date(Date.now() - 60000),
-      },
-    ],
-  },
-  {
-    id: "2",
-    title: "React Server Components",
-    messages: [
-      {
-        id: "m2",
-        role: "user",
-        content: "What are React Server Components?",
-        timestamp: new Date(Date.now() - 300000),
-      },
-      {
-        id: "m3",
-        role: "assistant",
-        content:
-          "React Server Components (RSC) allow you to write UI that can be rendered and optionally cached on the server. In Next.js, this is the default for components in the `app` directory. They can fetch data securely and reduce JavaScript bundle sizes.",
-        timestamp: new Date(Date.now() - 290000),
-      },
-    ],
-  },
-];
 
 // ----------------------------------------------------------------------
 // MAIN COMPONENT
 // ----------------------------------------------------------------------
 
 export default function Home() {
-  // State Ownership:
-  // We keep all state in the top-level `Home` component. This enables single-source-of-truth 
-  // for all chat history, active view selection, and typing indicators. 
-  // By maintaining state here, we can easily pass data down through props to the composed UI components.
-  // In the future, this is where we would inject an LLM hook context or external state manager.
-  
-  const [chats, setChats] = useState<ChatSession[]>(MOCK_CHATS);
+  const [chats, setChats] = useState<ChatSession[]>([
+    {
+      id: "1",
+      title: "New Chat",
+      messages: [],
+    },
+  ]);
   const [activeChatId, setActiveChatId] = useState<string>("1");
-  const [isTyping, setIsTyping] = useState<boolean>(false);
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+
   const activeChat = chats.find((c) => c.id === activeChatId);
+
+  // Vercel AI SDK v7 Integration
+  // `sendMessage` replaces the old `append`.
+  // `status` replaces the old `isLoading` boolean.
+  const { messages, setMessages, sendMessage, status } = useChat({
+    id: activeChatId,
+  });
+
+  const isLoading = status === "submitted" || status === "streaming";
+
+  // Track the streaming messages from `useChat` into our global `chats` array
+  useEffect(() => {
+    setChats((prev) =>
+      prev.map((chat) => {
+        if (chat.id !== activeChatId) return chat;
+
+        const isFirstMessage =
+          chat.title === "New Chat" && messages.length > 0;
+        let newTitle = chat.title;
+        if (isFirstMessage) {
+          const firstUserMsg = messages.find((m) => m.role === "user");
+          if (firstUserMsg) {
+            const text = getMessageText(firstUserMsg);
+            newTitle = text.slice(0, 30) + (text.length > 30 ? "..." : "");
+          }
+        }
+
+        return {
+          ...chat,
+          title: newTitle,
+          messages: messages,
+        };
+      })
+    );
+  }, [messages, activeChatId]);
+
+  // When switching chats, load the saved messages into useChat
+  useEffect(() => {
+    const session = chats.find((c) => c.id === activeChatId);
+    if (session) {
+      setMessages(session.messages);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChatId, setMessages]);
 
   // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeChat?.messages, isTyping]);
+  }, [messages, isLoading]);
 
   const handleNewChat = () => {
     const newSession: ChatSession = {
@@ -99,52 +113,10 @@ export default function Home() {
   };
 
   const handleSendMessage = (content: string) => {
-    if (!activeChat) return;
+    if (!content.trim()) return;
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content,
-      timestamp: new Date(),
-    };
-
-    // Store user message & update title if it's the first actual message
-    setChats((prev) =>
-      prev.map((chat) => {
-        if (chat.id !== activeChatId) return chat;
-        
-        const isFirstMessage = chat.title === "New Chat";
-        const newTitle = isFirstMessage 
-          ? content.slice(0, 30) + (content.length > 30 ? "..." : "")
-          : chat.title;
-
-        return {
-          ...chat,
-          title: newTitle,
-          messages: [...chat.messages, userMessage],
-        };
-      })
-    );
-
-    // Simulate AI thinking and response
-    setIsTyping(true);
-    setTimeout(() => {
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: `I received your message: "${content}". This is a simulated response since no LLM backend is integrated yet.`,
-        timestamp: new Date(),
-      };
-
-      setChats((prev) =>
-        prev.map((chat) =>
-          chat.id === activeChatId
-            ? { ...chat, messages: [...chat.messages, aiMessage] }
-            : chat
-        )
-      );
-      setIsTyping(false);
-    }, 1500);
+    // AI SDK v7: `sendMessage` accepts `{ text: string }`
+    sendMessage({ text: content });
   };
 
   // ----------------------------------------------------------------------
@@ -152,7 +124,7 @@ export default function Home() {
   // ----------------------------------------------------------------------
 
   const headerSlot = (
-    <div className="flex h-16 w-full items-center justify-between px-6 bg-white shadow-sm">
+    <div className="flex h-16 w-full items-center justify-between px-6 bg-white border-b border-slate-200 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-800 tracking-tight">
         {activeChat?.title || "New Chat"}
       </h2>
@@ -162,31 +134,34 @@ export default function Home() {
           aria-label="Settings"
           title="Settings"
         >
-          <span role="img" aria-hidden="true">⚙️</span>
+          <span role="img" aria-hidden="true">
+            ⚙️
+          </span>
         </button>
       </div>
     </div>
   );
 
   const messagesSlot = (
-    <div className="flex flex-col py-6 w-full max-w-4xl mx-auto">
-      {!activeChat || activeChat.messages.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-slate-400">
+    <div className="flex flex-col py-6 w-full max-w-4xl mx-auto h-full">
+      {!messages || messages.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-slate-400 flex-1">
           <span className="text-5xl mb-4 opacity-50">🤖</span>
-          <p className="text-lg font-medium">How can I help you today?</p>
-          <p className="text-sm mt-2 opacity-75">Send a message to start.</p>
+          <p className="text-lg font-medium">I&apos;m connected to Gemini!</p>
+          <p className="text-sm mt-2 opacity-75">
+            Send a message to start our conversation.
+          </p>
         </div>
       ) : (
         <>
-          {activeChat.messages.map((msg) => (
+          {messages.map((msg) => (
             <MessageBubble
               key={msg.id}
-              role={msg.role}
-              content={msg.content}
-              timestamp={msg.timestamp}
+              role={msg.role as "user" | "assistant"}
+              content={getMessageText(msg)}
             />
           ))}
-          {isTyping && <TypingIndicator />}
+          {isLoading && <TypingIndicator />}
           <div ref={messagesEndRef} className="h-4" />
         </>
       )}
@@ -197,31 +172,26 @@ export default function Home() {
     <div className="mx-auto max-w-4xl w-full flex flex-col gap-2">
       <ChatInput
         onSend={handleSendMessage}
-        disabled={isTyping}
-        placeholder={isTyping ? "AI is typing..." : "Send a message..."}
+        disabled={isLoading}
+        placeholder={isLoading ? "Gemini is typing..." : "Send a message..."}
       />
       <div className="text-center text-xs text-slate-400 font-medium pb-2">
-        AI responses are mocked. Ready for real LLM integration.
+        Powered by Vercel AI SDK &amp; Google Gemini
       </div>
     </div>
   );
 
   return (
     <div className="flex h-full min-h-screen w-full bg-slate-50 font-sans">
-      {/* 
-        The Sidebar is fixed at left-0 and w-64 (16rem).
-      */}
+      {/* Sidebar fixed left */}
       <Sidebar
-        chats={chats}
+        chats={chats.map((c) => ({ id: c.id, title: c.title }))}
         activeChatId={activeChatId}
         onSelectChat={setActiveChatId}
         onNewChat={handleNewChat}
       />
 
-      {/* 
-        The main chat view container.
-        Since Sidebar is fixed (`absolute/fixed w-64`), we offset this by `ml-64` to prevent overlap.
-      */}
+      {/* Offset by ml-64 to accommodate fixed sidebar */}
       <div className="flex-1 ml-64 flex min-w-0">
         <ChatLayout
           headerSlot={headerSlot}
