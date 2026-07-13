@@ -1,15 +1,11 @@
 "use client";
 
 import React from "react";
+import { ChatList, Chat } from "./ChatList";
 
 // ----------------------------------------------------------------------
 // DATA TYPES
 // ----------------------------------------------------------------------
-
-export interface Chat {
-  id: string;
-  title: string;
-}
 
 interface SidebarProps {
   chats: Chat[];
@@ -18,20 +14,10 @@ interface SidebarProps {
   onNewChat: () => void;
 }
 
-interface ChatListProps {
-  chats: Chat[];
-  activeChatId: string;
-  onSelectChat: (id: string) => void;
-}
 
-interface ChatItemProps {
-  title: string;
-  active: boolean;
-  onClick: () => void;
-}
 
 // ----------------------------------------------------------------------
-// SUB-COMPONENTS
+// SUB-COMPONENTS (Continued)
 // ----------------------------------------------------------------------
 
 const Logo: React.FC = () => (
@@ -53,46 +39,6 @@ const NewChatButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
       [ + New Chat ]
     </button>
   </div>
-);
-
-const ChatItem: React.FC<ChatItemProps> = ({ title, active, onClick }) => {
-  return (
-    <li>
-      <button
-        onClick={onClick}
-        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-          active
-            ? "bg-slate-800 text-white font-medium shadow-sm"
-            : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-        }`}
-        aria-current={active ? "page" : undefined}
-      >
-        <span role="img" aria-label="Chat Bubble">
-          💬
-        </span>
-        <span className="truncate">{title}</span>
-      </button>
-    </li>
-  );
-};
-
-const ChatList: React.FC<ChatListProps> = ({
-  chats,
-  activeChatId,
-  onSelectChat,
-}) => (
-  <nav className="flex-1 overflow-y-auto px-2 py-4 hide-scrollbar">
-    <ul className="flex flex-col gap-1 space-y-1">
-      {chats.map((chat) => (
-        <ChatItem
-          key={chat.id}
-          title={chat.title}
-          active={chat.id === activeChatId}
-          onClick={() => onSelectChat(chat.id)}
-        />
-      ))}
-    </ul>
-  </nav>
 );
 
 const UserProfile: React.FC = () => (
@@ -120,11 +66,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <aside className="fixed left-0 top-0 flex h-screen w-64 flex-col bg-slate-900 text-slate-100 shadow-xl border-r border-slate-800">
       <Logo />
       <NewChatButton onClick={onNewChat} />
-      <ChatList
-        chats={chats}
-        activeChatId={activeChatId}
-        onSelectChat={onSelectChat}
-      />
+      <div className="flex-1 overflow-y-auto w-full hide-scrollbar flex flex-col">
+        <ChatList
+          chats={chats}
+          activeChatId={activeChatId}
+          onSelect={onSelectChat}
+        />
+      </div>
       <UserProfile />
     </aside>
   );
